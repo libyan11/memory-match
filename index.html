@@ -760,7 +760,7 @@ function renderNet() {
   $('lNet').textContent = netText || ' ';
 }
 function renderHome() {
-  if (document.activeElement !== $('hName')) $('hName').value = myName;
+  if (document.activeElement !== $('hName') && !$('hName').value) $('hName').value = myName; /* never wipe a name being typed */
   $('onlineBox').hidden = !onlineOK;
   $('onlineNote').hidden = onlineOK;
   const savedHost = getItem(LS, 'mm-host');
