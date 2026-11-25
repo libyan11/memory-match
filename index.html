@@ -17,6 +17,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik:wght@600;700;800&family=Manrope:wght@500;600;700;800&display=swap" media="print" onload="this.media='all'"><noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik:wght@600;700;800&family=Manrope:wght@500;600;700;800&display=swap"></noscript>
 <script>/* connection tools load in the background, so the page shows at once; room actions wait for NET */window.NET=Promise.all(['vendor/peerjs-1.5.4.min.js','vendor/mqtt-5.10.1.min.js'].map(function(s){return new Promise(function(r){var e=document.createElement('script');e.src=s;e.async=false;e.onload=e.onerror=function(){r()};document.head.appendChild(e)})})).then(function(){window.NET_DONE=1});</script>
+<script>/* Game Night mode: only on night links */if(/[?&]night=/.test(location.search))document.write('<script src="/night.js"><\/script>')</script>
 <style>
 /* Layout: a bright toy-box table. Everyone's pairs along the top, the grid of face-down cards filling the middle. */
 :root {
@@ -437,8 +438,17 @@ function viewFor(pid) {
   v.players = S.players.map(p => ({ id: p.id, name: p.name, bot: p.bot, online: p.online, pairs: p.pairs, wins: p.wins }));
   return v;
 }
+/* Game Night: who placed where when a match ends (null while it is still going) */
+function nightRank() {
+  const by = vals => { const d = [...new Set(vals)].sort((a, b) => b - a); return S.players.map((p, i) => ({ name: p.name, bot: !!p.bot, place: d.indexOf(vals[i]) })); };
+  const order = list => list.map((pi, k) => ({ name: S.players[pi].name, bot: !!S.players[pi].bot, place: k }));
+  const duel = w => S.players.map((p, i) => ({ name: p.name, bot: !!p.bot, place: w == null || w === i ? 0 : 1 }));
+  void by; void order; void duel;
+  return S.phase === 'over' ? by(S.players.map(p => p.pairs)) : null;
+}
 function changed() {
   if (role === 'host') broadcast();
+  if (role === 'host' && window.GN) GN.report(nightRank());
   if (role === 'host' || role === 'solo') {
     V = viewFor(me);
     if (role === 'solo') setItem(LS, 'mm-solo', S);
@@ -934,7 +944,7 @@ function createRoom() {
   if (!readName()) return;
   if (waitNet(createRoom)) return;
   if (!netReady()) { homeMsg = "Couldn't load the connection tools. Check your internet and reload."; homeErr = true; renderHome(); return; }
-  role = 'host'; roomCode = newCode(); hostSess = rid(); shownOver = null; lastKey = '';
+  role = 'host'; roomCode = (window.GN && GN.code()) || newCode(); hostSess = rid(); shownOver = null; lastKey = '';
   S = baseState('room', homeSize);
   S.players.push(newPlayer(me, myName, false));
   history.replaceState(null, '', '#' + roomCode);
@@ -1024,7 +1034,7 @@ $('modal').addEventListener('click', e => {
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('modal').hidden) closeModal(); });
 window.addEventListener('pagehide', () => { if (role === 'guest' && hostConn && hostConn.open) { try { hostConn.send({ t: 'away' }); } catch (e) { /* skip */ } } });
-window.addEventListener('beforeunload', e => { if (role === 'host' && conns.size) { e.preventDefault(); e.returnValue = ''; } });
+window.addEventListener('beforeunload', e => { if (role === 'host' && conns.size && !window.GN_LEAVING) { e.preventDefault(); e.returnValue = ''; } });
 
 /* ================= boot ================= */
 (function boot() {
@@ -1036,6 +1046,7 @@ window.addEventListener('beforeunload', e => { if (role === 'host' && conns.size
   if (!onlineOK) return;
   NET.then(() => {
     if (role) return;
+    if (window.GN && GN.code()) { $('hName').value = GN.name(); if (GN.isHost()) createRoom(); else { $('hCode').value = GN.code(); joinFromForm(); } return; }
     if (myName && savedHost && savedHost.code && hashCode === savedHost.code && netReady()) { reopenRoom(); return; }
     if (myName && savedGuest && savedGuest.code && (!hashCode || hashCode === savedGuest.code) && netReady()) { joinRoom(savedGuest.code); return; }
     if (hashCode.length === 4) { homeMsg = myName ? `Tap Join room to join room ${hashCode}.` : `Type your name, then tap Join room to join room ${hashCode}.`; renderHome(); }
